@@ -76,8 +76,51 @@ static void BM_IfstreamGetline(benchmark::State& state) {
 BENCHMARK(BM_IfstreamGetline);
 
 
+static void BM_naive_mmap(benchmark::State& state) {
+  // Open file
+  std::string filename = "data/ecoli_counts.txt";
+  // Get file size
+  std::ifstream fp(filename, std::ifstream::ate | std::ifstream::binary);
+  std::ifstream::pos_type size = fp.tellg();
+  fp.close();
+  // std::cout << "size " << size << std::endl;
+  // exit(0);
+
+  // mmap file
+  int fd = open(filename.c_str(), O_RDONLY);
+  char *  addr = reinterpret_cast<char *>(mmap(NULL, size, PROT_READ, MAP_FILE | MAP_PRIVATE | MAP_POPULATE , fd, 0));
+  if (addr == MAP_FAILED) {
+    std::cout<<"Data can't be mapped???"<<std::endl;
+    exit(1);
+  }
+  madvise(addr,size,MADV_SEQUENTIAL|MADV_WILLNEED);
+
+  uint global_sum = 0;
+
+  // Read lines
+  std::string line;
+  char * pointer = addr;
+  for (auto _ : state) {
+    // Compute line_size
+    uint linesize = 0;
+    while (pointer[linesize] != '\n') linesize += 1;
+    // Do stuff
+    uint sum = do_stuff(pointer, linesize);
+    global_sum += sum;
+    // Update pointer
+    pointer += linesize + 1;
+  }
+  std::cout << "Global sum " << global_sum << std::endl;
+
+  // Close everything
+  munmap(addr, size);
+  close(fd);
+}
+BENCHMARK(BM_naive_mmap);
+
+
 // Define another benchmark
-static void BM_IfstreamGetline_mmap(benchmark::State& state) {
+static void BM_mmap(benchmark::State& state) {
   // Open file
   std::string filename = "data/ecoli_counts.txt";
   // Get file size
@@ -112,6 +155,6 @@ static void BM_IfstreamGetline_mmap(benchmark::State& state) {
   munmap(addr, size);
   close(fd);
 }
-BENCHMARK(BM_IfstreamGetline_mmap);
+BENCHMARK(BM_mmap);
 
 BENCHMARK_MAIN();
